@@ -1,7 +1,0 @@
-<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1200" height="630" fill="#F4EEE6"/>
-  <rect x="46" y="42" width="1108" height="546" rx="28" fill="#FBF8F4"/>
-  <path d="M134 450C272 340 396 285 506 285C695 285 788 430 970 430C1022 430 1071 420 1116 400V588H134V450Z" fill="#C89F7A" fill-opacity="0.72"/>
-  <text x="118" y="218" fill="#2D2118" font-size="64" font-family="Georgia, serif">Tengda Wang</text>
-  <text x="118" y="290" fill="#6A5444" font-size="28" font-family="Arial, sans-serif">Tech, Product, AI and long-form notes.</text>
-</svg>

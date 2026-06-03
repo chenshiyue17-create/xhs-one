@@ -2,8 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SESSION_NAME="${SCREEN_SESSION_NAME:-xhs-one-dev}"
-PORT="${PORT:-4173}"
+SESSION_NAME="${SCREEN_SESSION_NAME:-xhs-all-in-one-dev}"
 LOG_FILE="$ROOT_DIR/logs/dev-server.log"
 
 screen_has_session() {
@@ -16,15 +15,17 @@ else
   echo "Screen session is not running: $SESSION_NAME"
 fi
 
-if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "Port $PORT is in use"
-else
-  echo "Port $PORT is not in use"
-fi
+for port in 8000 5173 8765; do
+  if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "Port $port is in use"
+  else
+    echo "Port $port is not in use"
+  fi
+done
 
 if [ -f "$LOG_FILE" ]; then
   echo "Recent logs:"
-  tail -20 "$LOG_FILE"
+  tail -40 "$LOG_FILE"
 else
   echo "No log file yet: $LOG_FILE"
 fi

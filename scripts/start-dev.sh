@@ -2,8 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SESSION_NAME="${SCREEN_SESSION_NAME:-xhs-one-dev}"
-PORT="${PORT:-4173}"
+SESSION_NAME="${SCREEN_SESSION_NAME:-xhs-all-in-one-dev}"
 LOG_FILE="$ROOT_DIR/logs/dev-server.log"
 
 mkdir -p "$ROOT_DIR/logs" "$ROOT_DIR/output"
@@ -17,17 +16,20 @@ if screen_has_session; then
   sleep 1
 fi
 
-if command -v lsof >/dev/null 2>&1; then
-  EXISTING_PIDS="$(lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN || true)"
-  if [ -n "$EXISTING_PIDS" ]; then
-    kill $EXISTING_PIDS || true
-    sleep 1
+for port in 8000 5173 8765; do
+  if command -v lsof >/dev/null 2>&1; then
+    pids="$(lsof -nP -tiTCP:"$port" -sTCP:LISTEN || true)"
+    if [ -n "$pids" ]; then
+      kill $pids || true
+      sleep 1
+    fi
   fi
-fi
+done
 
 cd "$ROOT_DIR"
-screen -dmS "$SESSION_NAME" bash -lc "npm run dev -- --host 0.0.0.0 --port $PORT > '$LOG_FILE' 2>&1"
+screen -dmS "$SESSION_NAME" bash -lc "./start.sh > '$LOG_FILE' 2>&1"
 
 echo "Dev server started in screen session: $SESSION_NAME"
-echo "Local URL: http://localhost:$PORT"
+echo "Frontend URL: http://127.0.0.1:5173"
+echo "Backend URL: http://127.0.0.1:8000/docs"
 echo "Log file: $LOG_FILE"
