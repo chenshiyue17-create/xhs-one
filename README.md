@@ -142,6 +142,12 @@ npm run dev:start
 
 访问地址：`http://服务器IP:4173`
 
+后续更新时，在服务器项目目录执行：
+
+```bash
+npm run deploy:pull
+```
+
 ### 方式二：静态构建后交给 Nginx/Caddy
 
 1. 服务器执行 `npm install && npm run build`
