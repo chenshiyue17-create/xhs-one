@@ -32,6 +32,8 @@ def _load_yaml_config() -> Dict[str, Any]:
         "server.host": "server_host",
         "server.port": "server_port",
         "server.cors_origins": "backend_cors_origins",
+        "server.allowed_hosts": "allowed_hosts",
+        "server.expose_api_docs": "expose_api_docs",
         "database.type": "database_type",
         "database.sqlite_path": "database_sqlite_path",
         "database.mysql_host": "database_mysql_host",
@@ -41,6 +43,7 @@ def _load_yaml_config() -> Dict[str, Any]:
         "database.mysql_database": "database_mysql_database",
         "security.secret_key": "secret_key",
         "security.fernet_key": "fernet_key",
+        "security.bootstrap_admin_password": "bootstrap_admin_password",
         "scheduler.enabled": "scheduler_enabled",
         "scheduler.interval_seconds": "scheduler_interval_seconds",
         "frontend.serve_static": "frontend_serve_static",
@@ -100,10 +103,13 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = "dev-only-change-me"
     fernet_key: str = ""
+    bootstrap_admin_password: str = ""
 
     # Server
     server_host: str = "0.0.0.0"
     server_port: int = 8000
+    allowed_hosts: str = "127.0.0.1,localhost,testserver"
+    expose_api_docs: bool = True
 
     # CORS
     backend_cors_origins: str = "http://127.0.0.1:5173,http://localhost:5173"
@@ -127,6 +133,10 @@ class Settings(BaseSettings):
     # Launcher / local helper defaults
     launcher_default_server_base_url: str = "http://47.87.68.74/spider-xhs"
     launcher_desktop_entry_name: str = "XHS工作台.app"
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() in {"prod", "production"}
 
     if hasattr(BaseSettings, "model_config"):
         model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

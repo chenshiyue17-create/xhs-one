@@ -2,7 +2,9 @@ import {
   CheckOutlined,
   CloudDownloadOutlined,
   CommentOutlined,
+  CopyOutlined,
   DatabaseOutlined,
+  FileTextOutlined,
   FolderOpenOutlined,
   GlobalOutlined,
   HeartOutlined,
@@ -20,8 +22,8 @@ import {
 import { Alert, Button, Card, Col, Empty, Input, Progress, Row, Select, Space, Tag, Typography, message } from "antd";
 import { useEffect, useMemo, useState } from "react";
 
-import { apiUrl, downloadXhsNote, fetchAccounts, fetchSavedNoteIds, fetchXhsUserNotes, http, saveXhsNotesToLibrary } from "../../../lib/api";
-import type { PlatformAccount, XhsSearchNote } from "../../../types";
+import { apiUrl, downloadXhsNote, extractXhsCopy, fetchAccounts, fetchSavedNoteIds, fetchXhsUserNotes, http, saveXhsNotesToLibrary } from "../../../lib/api";
+import type { PlatformAccount, XhsCopyExtractItem, XhsSearchNote } from "../../../types";
 
 const { Title, Text } = Typography;
 
@@ -34,8 +36,12 @@ export function XhsFastDownloadPage() {
   const [accounts, setAccounts] = useState<PlatformAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
   const [urlInput, setUrlInput] = useState("");
+  const [copyUrlInput, setCopyUrlInput] = useState("");
   const [bloggerUrl, setBloggerUrl] = useState("");
   const [isCrawlingBlogger, setIsCrawlingBlogger] = useState(false);
+  const [isExtractingCopy, setIsExtractingCopy] = useState(false);
+  const [copyResults, setCopyResults] = useState<XhsCopyExtractItem[]>([]);
+  const [selectedCopyUrl, setSelectedCopyUrl] = useState("");
   const [tasks, setTasks] = useState<Array<Record<string, any>>>([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
   const [savedNoteIds, setSavedNoteIds] = useState<string[]>([]);
@@ -43,6 +49,15 @@ export function XhsFastDownloadPage() {
 
   const pcAccounts = useMemo(() => accounts.filter((a) => a.platform === "xhs" && a.sub_type === "pc"), [accounts]);
   const pcAccountOptions = useMemo(() => pcAccounts.map((a) => ({ value: a.id, label: `${a.nickname || `PC ${a.id}`} · ${a.status}` })), [pcAccounts]);
+  const selectedCopy = useMemo(
+    () => copyResults.find((item) => item.url === selectedCopyUrl) || copyResults[0] || null,
+    [copyResults, selectedCopyUrl]
+  );
+  const copyStats = useMemo(() => ({
+    total: copyResults.length,
+    success: copyResults.filter((item) => item.status === "success").length,
+    video: copyResults.filter((item) => item.video_copy?.trim()).length
+  }), [copyResults]);
 
   async function loadAccounts() {
     setIsLoadingAccounts(true);
@@ -137,6 +152,72 @@ export function XhsFastDownloadPage() {
       setTasks((prev) => [{ id: taskId, url, status: "pending" }, ...prev]);
       void processTask(taskId, url);
     }
+  }
+
+  function parseUrls(input: string): string[] {
+    const matches = input.match(/https?:\/\/[^\s，,]+/g) || [];
+    return Array.from(new Set(matches.map((url) => url.trim())));
+  }
+
+  function formatCopyItem(item: XhsCopyExtractItem): string {
+    return [
+      `标题：${item.title || "未提取到标题"}`,
+      `作者：${item.author_name || "-"}`,
+      `链接：${item.url}`,
+      "",
+      "文案：",
+      item.copy || "未提取到正文文案",
+      "",
+      "视频文案：",
+      item.video_copy || "未提取到视频口播/字幕文案"
+    ].join("\n");
+  }
+
+  async function copyText(text: string, successMessage: string) {
+    if (!text.trim()) {
+      message.info("没有可复制的内容");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      message.success(successMessage);
+    } catch {
+      message.warning("复制失败，请手动选择文本复制");
+    }
+  }
+
+  async function handleCopyExtract() {
+    if (!selectedAccountId) {
+      message.warning("请先选择一个 PC 账号");
+      return;
+    }
+    const urls = parseUrls(copyUrlInput);
+    if (urls.length === 0) {
+      message.warning("请输入有效的小红书链接");
+      return;
+    }
+    setIsExtractingCopy(true);
+    try {
+      const response = await extractXhsCopy({ urls, account_id: selectedAccountId });
+      setCopyResults(response.items);
+      setSelectedCopyUrl(response.items[0]?.url || "");
+      if (response.success_count > 0) {
+        message.success(`已提取 ${response.success_count}/${response.total} 条文案`);
+        setCopyUrlInput("");
+      } else {
+        message.warning("暂未提取到可用文案，请检查账号权限或链接可访问性");
+      }
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail || e?.message || "文案提取失败";
+      message.error(detail);
+    } finally {
+      setIsExtractingCopy(false);
+    }
+  }
+
+  async function copyAllResults() {
+    const text = copyResults.filter((item) => item.status === "success").map(formatCopyItem).join("\n\n---\n\n");
+    await copyText(text, "已复制全部提取结果");
   }
 
   async function openDownloadFolder() {
@@ -300,6 +381,130 @@ export function XhsFastDownloadPage() {
           </Space>
           <Button type="primary" size="large" icon={<RocketOutlined />} onClick={handleFastDownload}>立即开始批量下载</Button>
         </div>
+      </Card>
+
+      <Card style={{ marginBottom: 24, background: "#141414", border: "1px solid #303030" }}>
+        <Row gutter={[16, 16]} align="stretch">
+          <Col xs={24} lg={10}>
+            <Space direction="vertical" size={12} style={{ width: "100%" }}>
+              <div>
+                <Text strong style={{ color: "rgba(255,255,255,0.85)" }}>
+                  <FileTextOutlined style={{ marginRight: 8 }} />
+                  链接文案提取
+                </Text>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>批量提取标题、正文文案和视频口播/字幕候选。</Text>
+                </div>
+              </div>
+              <Input.TextArea
+                value={copyUrlInput}
+                onChange={(e) => setCopyUrlInput(e.target.value)}
+                placeholder="粘贴小红书笔记链接，可一次输入多条..."
+                autoSize={{ minRows: 5, maxRows: 8 }}
+                style={{ background: "#1f1f1f", border: "1px solid #303030", color: "#fff" }}
+              />
+              <Row gutter={8}>
+                <Col span={8}>
+                  <Card size="small" style={{ background: "#1f1f1f", borderColor: "#303030" }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>结果</Text>
+                    <div style={{ color: "#fff", fontWeight: 700 }}>{copyStats.total} 条</div>
+                  </Card>
+                </Col>
+                <Col span={8}>
+                  <Card size="small" style={{ background: "#1f1f1f", borderColor: "#303030" }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>成功</Text>
+                    <div style={{ color: "#52c41a", fontWeight: 700 }}>{copyStats.success} 条</div>
+                  </Card>
+                </Col>
+                <Col span={8}>
+                  <Card size="small" style={{ background: "#1f1f1f", borderColor: "#303030" }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>视频文案</Text>
+                    <div style={{ color: "#1677ff", fontWeight: 700 }}>{copyStats.video} 条</div>
+                  </Card>
+                </Col>
+              </Row>
+              <Space>
+                <Button type="primary" icon={<FileTextOutlined />} loading={isExtractingCopy} onClick={handleCopyExtract}>仅提取文案</Button>
+                <Button icon={<CopyOutlined />} disabled={copyResults.length === 0} onClick={copyAllResults}>复制全部</Button>
+              </Space>
+            </Space>
+          </Col>
+          <Col xs={24} lg={14}>
+            <Row gutter={[12, 12]}>
+              <Col xs={24} md={10}>
+                <div style={{ minHeight: 280, maxHeight: 360, overflow: "auto", border: "1px solid #303030", borderRadius: 8, background: "#101010" }}>
+                  {copyResults.length === 0 ? (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无文案提取结果" style={{ marginTop: 64 }} />
+                  ) : copyResults.map((item) => (
+                    <button
+                      key={item.url}
+                      type="button"
+                      onClick={() => setSelectedCopyUrl(item.url)}
+                      style={{
+                        width: "100%",
+                        display: "block",
+                        textAlign: "left",
+                        padding: 12,
+                        border: 0,
+                        borderBottom: "1px solid #262626",
+                        background: selectedCopy?.url === item.url ? "#1d2a44" : "transparent",
+                        color: "#fff",
+                        cursor: "pointer",
+                        height: "auto"
+                      }}
+                    >
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                        <Tag color={item.status === "success" ? "success" : "error"}>{item.status === "success" ? "成功" : "失败"}</Tag>
+                        {item.note_type ? <Tag color={item.video_copy ? "blue" : "default"}>{item.note_type}</Tag> : null}
+                      </div>
+                      <Text ellipsis style={{ display: "block", color: "rgba(255,255,255,0.88)" }}>{item.title || item.message || "未命名链接"}</Text>
+                      <Text type="secondary" style={{ fontSize: 12 }}>{item.author_name || item.source || "待检查"}</Text>
+                    </button>
+                  ))}
+                </div>
+              </Col>
+              <Col xs={24} md={14}>
+                <div style={{ minHeight: 280, border: "1px solid #303030", borderRadius: 8, background: "#101010", padding: 16 }}>
+                  {selectedCopy ? (
+                    <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <Text strong style={{ color: "#fff", fontSize: 16 }}>{selectedCopy.title || "未提取到标题"}</Text>
+                          <div style={{ marginTop: 4 }}>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {selectedCopy.author_name || "未知作者"} · 赞 {formatMetric(selectedCopy.likes)} · 藏 {formatMetric(selectedCopy.collects)} · 评 {formatMetric(selectedCopy.comments)}
+                            </Text>
+                          </div>
+                        </div>
+                        <Space>
+                          <Button size="small" icon={<CopyOutlined />} onClick={() => copyText(formatCopyItem(selectedCopy), "已复制当前文案")}>复制</Button>
+                          <Button size="small" icon={<LinkOutlined />} href={selectedCopy.url} target="_blank">原文</Button>
+                        </Space>
+                      </div>
+                      {selectedCopy.tags?.length ? (
+                        <Space size={4} wrap>{selectedCopy.tags.map((tag) => <Tag key={tag} color="blue">#{tag}</Tag>)}</Space>
+                      ) : null}
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 12 }}>正文文案</Text>
+                        <pre style={{ whiteSpace: "pre-wrap", margin: "6px 0 0", color: "rgba(255,255,255,0.82)", background: "#1f1f1f", borderRadius: 6, padding: 12, maxHeight: 130, overflow: "auto" }}>
+                          {selectedCopy.copy || "未提取到正文文案"}
+                        </pre>
+                      </div>
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 12 }}>视频文案</Text>
+                        <pre style={{ whiteSpace: "pre-wrap", margin: "6px 0 0", color: "rgba(255,255,255,0.82)", background: "#1f1f1f", borderRadius: 6, padding: 12, maxHeight: 130, overflow: "auto" }}>
+                          {selectedCopy.video_copy || "未提取到视频口播/字幕文案"}
+                        </pre>
+                      </div>
+                    </Space>
+                  ) : (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择一条结果查看标题、文案和视频文案" style={{ marginTop: 64 }} />
+                  )}
+                </div>
+              </Col>
+            </Row>
+          </Col>
+        </Row>
       </Card>
 
       <div style={{ marginBottom: 16 }}>

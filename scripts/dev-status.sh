@@ -1,31 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SESSION_NAME="${SCREEN_SESSION_NAME:-xhs-all-in-one-dev}"
-LOG_FILE="$ROOT_DIR/logs/dev-server.log"
+SESSION_NAME="${XHS_SCREEN_SESSION:-xhs-all-in-one-dev}"
+HOST="${XHS_HOST:-127.0.0.1}"
+PORT="${XHS_PORT:-8000}"
 
-screen_has_session() {
-  (screen -list 2>/dev/null || true) | grep -q "[.]${SESSION_NAME}[[:space:]]"
-}
-
-if screen_has_session; then
-  echo "Screen session is running: $SESSION_NAME"
+echo "[screen]"
+if command -v screen >/dev/null 2>&1; then
+  screen_output="$(screen -ls 2>/dev/null || true)"
 else
-  echo "Screen session is not running: $SESSION_NAME"
+  screen_output=""
 fi
 
-for port in 8000 5173 8765; do
-  if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "Port $port is in use"
-  else
-    echo "Port $port is not in use"
-  fi
-done
-
-if [ -f "$LOG_FILE" ]; then
-  echo "Recent logs:"
-  tail -40 "$LOG_FILE"
+if grep -q "$SESSION_NAME" <<<"$screen_output"; then
+  grep "$SESSION_NAME" <<<"$screen_output"
 else
-  echo "No log file yet: $LOG_FILE"
+  echo "$SESSION_NAME is not running"
+fi
+
+echo
+echo "[health]"
+if curl -fsS "http://$HOST:$PORT/api/health"; then
+  echo
+  echo "[ok] http://$HOST:$PORT"
+else
+  echo "[error] health check failed: http://$HOST:$PORT/api/health"
+  exit 1
 fi

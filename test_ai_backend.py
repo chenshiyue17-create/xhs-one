@@ -5,7 +5,7 @@ import json
 import requests
 
 # 1. 强制添加路径，确保能导入后端模块
-PROJECT_ROOT = Path("/Users/cc/XHS_ALL_IN_ONE")
+PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "backend"))
 
@@ -40,8 +40,8 @@ def test_expert_ai_logic():
         print(f"检测到默认模型: {config.name} ({config.model_name})")
         api_key = decrypt_text(config.encrypted_api_key)
         
-        if "PASTE_DEEPSEEK_API_KEY_HERE" in api_key:
-            print("⚠️ 警告: DeepSeek API Key 尚未配置，目前是占位符。")
+        if not api_key:
+            print("警告: DeepSeek API Key 尚未配置。")
             return
 
         print("正在尝试调用 DeepSeek 接口...")

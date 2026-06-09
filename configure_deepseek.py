@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 # Add project root to sys.path to import backend modules
-PROJECT_ROOT = Path("/Users/cc/XHS_ALL_IN_ONE")
+PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "backend"))
 
@@ -12,9 +12,8 @@ from backend.app.core.database import SessionLocal
 from backend.app.models import ModelConfig
 
 def insert_deepseek_models():
-    # Placeholder key - user will need to update this in the UI
-    placeholder_key = "PASTE_DEEPSEEK_API_KEY_HERE"
-    encrypted_key = encrypt_text(placeholder_key)
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    encrypted_key = encrypt_text(api_key)
     
     # User ID 2 is 'admin'
     user_id = 2

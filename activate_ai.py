@@ -1,5 +1,5 @@
-import os
 import sys
+import os
 from pathlib import Path
 
 # Add project root to sys.path to import backend modules
@@ -12,9 +12,9 @@ from backend.app.core.database import SessionLocal
 from backend.app.models import ModelConfig
 
 def update_api_key():
-    real_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+    real_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
     if not real_key:
-        raise RuntimeError("请先设置 DEEPSEEK_API_KEY 环境变量，再运行 activate_ai.py")
+        raise RuntimeError("请通过环境变量 DEEPSEEK_API_KEY 传入密钥，不要写入代码或提交到仓库。")
     encrypted_key = encrypt_text(real_key)
     
     # User ID 2 is 'admin'

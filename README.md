@@ -155,6 +155,25 @@
 - Python 3.10+
 - Node.js 20+
 
+### 本地统一入口
+
+本地开发和日常启动优先使用统一脚本，避免入口分散：
+
+```bash
+./scripts/start-dev.sh
+./scripts/dev-status.sh
+./scripts/stop-dev.sh
+./scripts/project-index.py check
+```
+
+启动后访问：
+
+- 工作台: http://127.0.0.1:8000/platforms/xhs/fast-download
+- API 文档: http://127.0.0.1:8000/docs
+- 健康检查: http://127.0.0.1:8000/api/health
+
+项目地图见 [docs/PROJECT_MAP.md](docs/PROJECT_MAP.md)，机器可读索引见 [PROJECT_INDEX.json](PROJECT_INDEX.json)。新增模块、脚本、版本来源和运行说明优先登记到这里，避免下次排查时散在根目录里。
+
 ### 安装依赖
 
 ```bash
@@ -169,12 +188,16 @@ cd frontend && npm install && cd ..
 ### 启动项目
 
 ```bash
-# 一键启动（后端 + 前端）
+# 推荐：后台启动统一服务（后端托管 frontend/dist）
+./scripts/start-dev.sh
+
+# 兼容：前台启动后端 + Vite 前端
 python main.py --with-frontend
 ```
 
 启动后访问：
-- 前端: http://localhost:5173
+- 工作台: http://127.0.0.1:8000/platforms/xhs/fast-download
+- 前端开发服务: http://localhost:5173
 - API 文档: http://localhost:8000/docs
 
 首次启动自动创建数据库，注册账号即可使用。
@@ -266,6 +289,9 @@ docker compose up -d
 ```
 XHS_ALL_IN_ONE/
 ├── main.py                         # 统一启动入口
+├── PROJECT_INDEX.json              # 机器可读项目索引和提交护栏
+├── scripts/                        # 统一启停和状态检查脚本
+├── docs/PROJECT_MAP.md             # 项目地图和维护入口
 ├── config/                         # YAML 配置（default / production）
 ├── apis/                           # XHS 底层 SDK（逆向签名 + HTTP 接口）
 ├── xhs_utils/                      # 签名算法封装
@@ -285,7 +311,7 @@ XHS_ALL_IN_ONE/
 │       ├── components/layout/      # 侧边栏 + 通知系统
 │       ├── lib/api.ts              # HTTP 客户端
 │       └── types/                  # TypeScript 类型
-├── tests/                          # 后端测试（126 passed）
+├── tests/                          # 后端测试
 ├── Dockerfile                      # 多阶段构建
 └── docker-compose.yml              # 编排文件
 ```

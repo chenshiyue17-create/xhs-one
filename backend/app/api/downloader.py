@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, Optional, List
 import subprocess
 import os
 import asyncio
 from pathlib import Path
+import re
 
 # 从我们刚搬过来的引擎中导入
 import sys
@@ -16,6 +17,44 @@ from module.settings import Settings
 from module.model import ExtractParams, ExtractData
 
 router = APIRouter(prefix="/fast-downloader", tags=["Fast Downloader"])
+
+
+class CopyExtractRequest(BaseModel):
+    urls: list[str] = Field(default_factory=list)
+    url: str | None = None
+    account_id: int | None = None
+    cookie: str | None = None
+    include_raw: bool = False
+
+
+class CopyExtractItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    url: str
+    status: str
+    title: str = ""
+    note_copy: str = Field(default="", alias="copy")
+    video_copy: str = ""
+    note_id: str = ""
+    note_type: str = ""
+    author_name: str = ""
+    author_id: str = ""
+    cover_url: str = ""
+    likes: int = 0
+    collects: int = 0
+    comments: int = 0
+    shares: int = 0
+    tags: list[str] = Field(default_factory=list)
+    source: str = ""
+    message: str = ""
+    raw: dict[str, Any] | None = None
+
+
+class CopyExtractResponse(BaseModel):
+    total: int
+    success_count: int
+    failed_count: int
+    items: list[CopyExtractItem]
 
 # 全局引擎实例
 _xhs_instance: Optional[XHS] = None
@@ -79,7 +118,250 @@ def _extract_fallback_image_urls(note_card: dict) -> list[str]:
     filtered = [item for item in urls if not item.endswith(".mp4") and "sns-video" not in item]
     return filtered
 
+
+_VIDEO_COPY_KEYS = {
+    "subtitle",
+    "subtitles",
+    "caption",
+    "captions",
+    "transcript",
+    "transcripts",
+    "asr",
+    "asr_text",
+    "speech_text",
+    "voice_text",
+    "video_text",
+    "video_copy",
+    "ocr_text",
+    "text_extra",
+}
+
+
+def _metric_int(value: Any) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, (int, float)):
+        return int(value)
+    text = str(value).strip().replace(",", "")
+    if not text:
+        return 0
+    multiplier = 1
+    if text.endswith("万") or text.lower().endswith("w"):
+        multiplier = 10000
+        text = text[:-1]
+    match = re.search(r"\d+(?:\.\d+)?", text)
+    return int(float(match.group(0)) * multiplier) if match else 0
+
+
+def _clean_copy_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return "\n".join(line.strip() for line in value.replace("\r", "\n").split("\n") if line.strip())
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, list):
+        return "\n".join(item for item in (_clean_copy_text(entry) for entry in value) if item)
+    if isinstance(value, dict):
+        chunks: list[str] = []
+        for key in ("text", "content", "desc", "caption", "subtitle", "asr_text"):
+            if key in value:
+                text = _clean_copy_text(value.get(key))
+                if text:
+                    chunks.append(text)
+        return "\n".join(chunks)
+    return str(value).strip()
+
+
+def _dedupe_lines(text: str) -> str:
+    seen: set[str] = set()
+    lines: list[str] = []
+    for line in text.splitlines():
+        clean = line.strip()
+        if clean and clean not in seen:
+            seen.add(clean)
+            lines.append(clean)
+    return "\n".join(lines)
+
+
+def _extract_video_copy(raw: Any) -> str:
+    candidates: list[str] = []
+
+    def walk(value: Any, key_hint: str = "") -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                lower = str(key).lower()
+                if lower in _VIDEO_COPY_KEYS or "subtitle" in lower or "transcript" in lower:
+                    text = _clean_copy_text(item)
+                    if text:
+                        candidates.append(text)
+                walk(item, lower)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item, key_hint)
+        elif key_hint in _VIDEO_COPY_KEYS and isinstance(value, str):
+            text = _clean_copy_text(value)
+            if text:
+                candidates.append(text)
+
+    walk(raw)
+    return _dedupe_lines("\n".join(candidates))
+
+
+def _tags_from_value(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [item.lstrip("#") for item in value.split() if item.strip()]
+    if not isinstance(value, list):
+        return []
+    tags: list[str] = []
+    for item in value:
+        if isinstance(item, str):
+            tags.append(item.lstrip("#"))
+        elif isinstance(item, dict):
+            tag = item.get("name") or item.get("tag_name") or item.get("title")
+            if tag:
+                tags.append(str(tag).lstrip("#"))
+    return [tag for index, tag in enumerate(tags) if tag and tag not in tags[:index]]
+
+
+def _normalize_copy_item(
+    url: str,
+    data: dict[str, Any] | None,
+    raw_source: dict[str, Any] | None = None,
+    *,
+    source: str,
+    message: str,
+    include_raw: bool,
+) -> CopyExtractItem:
+    data = data or {}
+    raw_source = raw_source or {}
+    user = raw_source.get("user") if isinstance(raw_source.get("user"), dict) else {}
+    interact = raw_source.get("interact_info") or raw_source.get("interactInfo") or {}
+    note_type = str(data.get("作品类型") or raw_source.get("type") or raw_source.get("model_type") or "")
+    copy = _clean_copy_text(data.get("作品描述") or raw_source.get("desc") or raw_source.get("content"))
+    video_copy = _extract_video_copy(raw_source)
+    if not video_copy and ("视频" in note_type or str(raw_source.get("type")) == "video"):
+        video_copy = copy
+
+    item = CopyExtractItem(
+        url=str(data.get("作品链接") or url),
+        status="success" if data else "failed",
+        title=str(data.get("作品标题") or raw_source.get("title") or raw_source.get("display_title") or ""),
+        note_copy=copy,
+        video_copy=video_copy,
+        note_id=str(data.get("作品ID") or raw_source.get("noteId") or raw_source.get("note_id") or raw_source.get("id") or ""),
+        note_type=note_type,
+        author_name=str(data.get("作者昵称") or user.get("nickname") or user.get("nickName") or ""),
+        author_id=str(data.get("作者ID") or user.get("user_id") or user.get("userId") or ""),
+        cover_url=str(data.get("封面地址") or ""),
+        likes=_metric_int(data.get("点赞数量") or interact.get("liked_count") or interact.get("likedCount")),
+        collects=_metric_int(data.get("收藏数量") or interact.get("collected_count") or interact.get("collectedCount")),
+        comments=_metric_int(data.get("评论数量") or interact.get("comment_count") or interact.get("commentCount")),
+        shares=_metric_int(data.get("分享数量") or interact.get("share_count") or interact.get("shareCount")),
+        tags=_tags_from_value(data.get("作品标签") or raw_source.get("tag_list") or raw_source.get("tagList") or raw_source.get("tags")),
+        source=source,
+        message=message,
+        raw=raw_source if include_raw else None,
+    )
+    if item.cover_url:
+        item.cover_url = _proxy_image_url(item.cover_url)
+    return item
+
 from loguru import logger
+
+
+def _extract_note_card(raw_payload: dict[str, Any]) -> dict[str, Any] | None:
+    items = raw_payload.get("data", {}).get("items", []) if isinstance(raw_payload, dict) else []
+    if not items:
+        return None
+    item = items[0] if isinstance(items[0], dict) else {}
+    note_card = item.get("note_card") or item.get("note") or item
+    return note_card if isinstance(note_card, dict) else None
+
+
+async def _get_copy_detail(
+    *,
+    xhs: XHS,
+    url: str,
+    cookie: str | None,
+    include_raw: bool,
+) -> CopyExtractItem:
+    from backend.app.adapters.xhs.pc_api_adapter import XhsPcApiAdapter
+
+    if cookie:
+        try:
+            success, message, raw_payload = XhsPcApiAdapter(cookie).get_note_info(url)
+            note_card = _extract_note_card(raw_payload)
+            if success and note_card:
+                if not note_card.get("imageList") and not note_card.get("image_list"):
+                    fallback_images = _extract_fallback_image_urls(note_card)
+                    if fallback_images:
+                        note_card["imageList"] = [{"urlDefault": image_url} for image_url in fallback_images]
+                data = xhs.explore.run(xhs.json_to_namespace(note_card))
+                if data:
+                    data["作品链接"] = url
+                    return _normalize_copy_item(
+                        url,
+                        data,
+                        note_card,
+                        source="api",
+                        message=message or "成功提取文案",
+                        include_raw=include_raw,
+                    )
+        except Exception as exc:
+            logger.warning(f"API copy extraction failed, fallback to HTML mode: {exc}")
+
+    data = await xhs._deal_extract(url, False, None, True, cookie, None, None)
+    if data:
+        return _normalize_copy_item(
+            url,
+            _proxy_downloader_data(data),
+            data,
+            source="html",
+            message="成功提取文案",
+            include_raw=include_raw,
+        )
+    return CopyExtractItem(url=url, status="failed", message="未能从链接提取标题或文案")
+
+
+@router.post("/copy/extract", response_model=CopyExtractResponse)
+async def extract_copy_from_links(
+    payload: CopyExtractRequest,
+    xhs: XHS = Depends(get_xhs),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    raw_inputs = [item.strip() for item in ([payload.url] if payload.url else []) + payload.urls if item and item.strip()]
+    if not raw_inputs:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请至少输入一个小红书链接")
+
+    cookie = payload.cookie
+    if not cookie and payload.account_id:
+        cookie = _get_owned_pc_account_cookies(db, current_user, payload.account_id)
+
+    items: list[CopyExtractItem] = []
+    async with xhs.semaphore:
+        for raw_url in raw_inputs[:50]:
+            try:
+                extracted_urls = await xhs.extract_links(raw_url, cookie=cookie)
+            except Exception as exc:
+                logger.warning(f"Failed to parse URL for copy extraction: {exc}")
+                extracted_urls = []
+            for url in (extracted_urls or [raw_url])[:10]:
+                try:
+                    items.append(await _get_copy_detail(xhs=xhs, url=url, cookie=cookie, include_raw=payload.include_raw))
+                except Exception as exc:
+                    logger.exception(f"Copy extraction failed for URL: {url}")
+                    items.append(CopyExtractItem(url=url, status="failed", message=str(exc)))
+
+    success_count = sum(1 for item in items if item.status == "success")
+    return CopyExtractResponse(
+        total=len(items),
+        success_count=success_count,
+        failed_count=len(items) - success_count,
+        items=items,
+    )
+
 
 @router.post("/detail", response_model=ExtractData)
 async def handle_detail(

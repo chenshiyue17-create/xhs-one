@@ -9,6 +9,8 @@
 #   server.host          -> SERVER_HOST
 #   server.port          -> SERVER_PORT
 #   server.cors_origins  -> BACKEND_CORS_ORIGINS
+#   server.allowed_hosts -> ALLOWED_HOSTS
+#   server.expose_api_docs -> EXPOSE_API_DOCS
 #   database.type        -> DATABASE_TYPE
 #   database.sqlite_path -> DATABASE_SQLITE_PATH
 #   database.mysql_host  -> DATABASE_MYSQL_HOST
@@ -18,6 +20,7 @@
 #   database.mysql_database -> DATABASE_MYSQL_DATABASE
 #   security.secret_key  -> SECRET_KEY
 #   security.fernet_key  -> FERNET_KEY
+#   security.bootstrap_admin_password -> BOOTSTRAP_ADMIN_PASSWORD
 #   scheduler.enabled    -> SCHEDULER_ENABLED
 #   scheduler.interval_seconds -> SCHEDULER_INTERVAL_SECONDS
 #   frontend.serve_static -> FRONTEND_SERVE_STATIC
@@ -27,6 +30,8 @@ server:
   host: "0.0.0.0"
   port: 8000
   cors_origins: "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"
+  allowed_hosts: "127.0.0.1,localhost,testserver"
+  expose_api_docs: true
 
 database:
   # "sqlite" for local development, "mysql" for production
@@ -46,6 +51,8 @@ security:
   # Fernet key for encrypting cookies and API keys
   # If empty, auto-derived from secret_key via SHA-256 + base64
   fernet_key: ""
+  # Optional first-run admin password. Never commit a real value.
+  bootstrap_admin_password: ""
 
 scheduler:
   # Enable background task scheduler (publish jobs, monitoring refresh)

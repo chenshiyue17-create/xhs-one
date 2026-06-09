@@ -74,6 +74,28 @@ def _clear_default_for_type(db: Session, user_id: int, model_type: str) -> None:
         config.is_default = False
 
 
+@router.post("/{config_id}/set-default")
+def set_model_default(
+    config_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # 1. 重置该用户所有同类型模型的默认状态
+    config = db.get(ModelConfig, config_id)
+    if not config or config.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Model config not found")
+
+    db.query(ModelConfig).filter(
+        ModelConfig.user_id == current_user.id,
+        ModelConfig.model_type == config.model_type
+    ).update({ModelConfig.is_default: False})
+
+    # 2. 设置当前模型为默认
+    config.is_default = True
+    db.commit()
+    return {"ok": True, "message": f"已将 {config.name} 设为默认"}
+
+
 @router.get("")
 def get_model_configs(
     model_type: Optional[str] = Query(default=None, pattern="^(text|image)$"),

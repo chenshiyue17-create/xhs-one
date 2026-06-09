@@ -393,10 +393,10 @@ async def expert_chat(
     from loguru import logger
     from langchain_community.embeddings import SentenceTransformerEmbeddings
     from langchain_community.vectorstores import FAISS
-    
+
     logger.info(f"AI 专家收到查询: {payload.query}")
     DB_DIR = os.path.expanduser("~/mcp-rag-expert/faiss_index")
-    
+
     if not os.path.exists(DB_DIR):
         logger.error("知识库目录不存在")
         return {"content": "知识库尚未初始化，请先运行 ingest.py 训练。"}
@@ -406,12 +406,28 @@ async def expert_chat(
         logger.info("正在加载 RAG 索引...")
         embeddings = SentenceTransformerEmbeddings(model_name="paraphrase-multilingual-MiniLM-L12-v2")
         faiss_db = FAISS.load_local(DB_DIR, embeddings, allow_dangerous_deserialization=True)
-        
-        # 2. 语义搜索
+
+        # 2. 语义搜索 (本地 RAG)
         docs = faiss_db.similarity_search(payload.query, k=3)
-        context = "\n---\n".join([d.page_content for d in docs])
+        local_context = "\n---\n".join([d.page_content for d in docs])
         logger.info(f"RAG 检索完成，找到 {len(docs)} 条相关资料")
-        
+
+        # 2.5 实时联网搜索 (补充线上数据)
+        online_context = ""
+        try:
+            from duckduckgo_search import DDGS
+            logger.info("正在执行实时联网搜索...")
+            with DDGS() as ddgs:
+                results = list(ddgs.text(payload.query, region='cn-zh', max_results=3))
+                if results:
+                    online_parts = [f"标题: {r['title']}\n摘要: {r['body']}\n链接: {r['href']}" for r in results]
+                    online_context = "\n\n".join(online_parts)
+                    logger.info("联网搜索成功，找到补充资料")
+        except Exception as e:
+            logger.warning(f"联网搜索失败: {e}")
+
+        combined_context = f"【本地私有知识库】:\n{local_context}\n\n【最新互联网搜索结果】:\n{online_context}"
+
         # 3. 获取当前默认模型配置 (DeepSeek)
         model_config, api_key = _text_model_context(db, current_user)
         logger.info(f"使用模型: {model_config.name} ({model_config.model_name})")
@@ -422,12 +438,12 @@ async def expert_chat(
             model_config=model_config,
             api_key=api_key,
             query=payload.query,
-            context=context
+            context=combined_context
         )
         logger.info("AI 响应成功")
-        
+
         return {"content": answer}
-        
+
     except Exception as e:
         logger.exception("AI 专家处理失败")
         return {"content": f"AI 专家思考失败：{str(e)}"}

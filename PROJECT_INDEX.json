@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "project_id": "xhs-one",
+  "project_name": "XHS_ALL_IN_ONE",
+  "canonical_root": "/Users/cc/XHS_ALL_IN_ONE",
+  "github_repository": "chenshiyue17-create/xhs-one",
+  "github_url": "https://github.com/chenshiyue17-create/xhs-one.git",
+  "default_branch": "main",
+  "working_branch_prefix": "codex/",
+  "daily_urls": {
+    "workbench": "http://127.0.0.1:8000/platforms/xhs/fast-download",
+    "api_docs": "http://127.0.0.1:8000/docs",
+    "health": "http://127.0.0.1:8000/api/health"
+  },
+  "canonical_commands": {
+    "start": "./scripts/start-dev.sh",
+    "status": "./scripts/dev-status.sh",
+    "stop": "./scripts/stop-dev.sh",
+    "project_check": "./scripts/project-index.py check",
+    "test_backend": ".venv/bin/python -m pytest tests/backend/test_downloader_copy_extract.py tests/backend/test_root_main.py -q",
+    "build_frontend": "cd frontend && npm run build"
+  },
+  "source_anchors": {
+    "backend_api": "backend/app/api",
+    "frontend_pages": "frontend/src/pages",
+    "frontend_xhs_pages": "frontend/src/pages/platforms/xhs",
+    "frontend_api_client": "frontend/src/lib/api.ts",
+    "frontend_types": "frontend/src/types/index.ts",
+    "tests": "tests",
+    "docs": "docs",
+    "scripts": "scripts"
+  },
+  "feature_anchors": {
+    "xhs_copy_extract": [
+      "backend/app/api/downloader.py",
+      "frontend/src/lib/api.ts",
+      "frontend/src/types/index.ts",
+      "frontend/src/pages/platforms/xhs/fast-download-page.tsx",
+      "tests/backend/test_downloader_copy_extract.py"
+    ]
+  },
+  "version_sources": [
+    "git:HEAD",
+    "frontend/src/lib/build-info.ts",
+    "frontend/src/lib/version.ts"
+  ],
+  "local_only_paths": [
+    "logs/",
+    "output/",
+    "downloads/",
+    ".venv/",
+    "node_modules/",
+    "frontend/node_modules/",
+    "frontend/dist/",
+    ".chrome-helper-profile/",
+    ".chrome-fast-download-profile/"
+  ],
+  "commit_guard": {
+    "never_stage": [
+      "logs/",
+      ".env",
+      ".chrome-helper-profile/",
+      ".chrome-fast-download-profile/"
+    ],
+    "warn_if_untracked": [
+      "frontend/src/lib/version.ts",
+      "memory.md",
+      "docs/PROJECT_MEMORY.md"
+    ]
+  }
+}

@@ -24,12 +24,14 @@ import {
   SunOutlined,
   UserOutlined,
   VideoCameraOutlined,
+  CodeOutlined,
 } from "@ant-design/icons";
 import {
   Avatar,
   Badge,
   Button,
   Col,
+  Drawer,
   Dropdown,
   Layout,
   List,
@@ -40,14 +42,14 @@ import {
   Typography,
 } from "antd";
 import type { MenuProps } from "antd";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import type { ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import KeepAliveRouteOutlet from "keepalive-for-react-router";
 
 import { useAuth } from "../../hooks/use-auth";
 import { useThemeMode } from "../../app/providers";
-import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from "../../lib/api";
+import { fetchNotifications, markAllNotificationsRead, markNotificationRead, fetchOpsLogs } from "../../lib/api";
 import type { AppNotification } from "../../types";
 
 const { Sider, Header, Content } = Layout;
@@ -93,6 +95,11 @@ export function AppShell() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // 全局实时日志状态
+  const [logVisible, setLogVisible] = useState(false);
+  const [globalLog, setGlobalLog] = useState("");
+  const logEndRef = useRef<HTMLDivElement>(null);
+
   const loadNotifications = useCallback(async () => {
     try {
       const res = await fetchNotifications({ page_size: 20 });
@@ -100,6 +107,27 @@ export function AppShell() {
       setUnreadCount(res.items.filter((n) => !n.read).length);
     } catch { /* silent */ }
   }, []);
+
+  // 轮询全局日志
+  useEffect(() => {
+    if (!logVisible) return;
+    const fetchLogs = async () => {
+      try {
+        const logs = await fetchOpsLogs("service", 100);
+        setGlobalLog(logs.content);
+      } catch { }
+    };
+    void fetchLogs();
+    const timer = setInterval(() => void fetchLogs(), 3000);
+    return () => clearInterval(timer);
+  }, [logVisible]);
+
+  // 自动滚动到日志底部
+  useEffect(() => {
+    if (logVisible && logEndRef.current) {
+      logEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [globalLog, logVisible]);
 
   useEffect(() => {
     void loadNotifications();
@@ -203,6 +231,13 @@ export function AppShell() {
           <Space size={12} align="center">
             <Button
               type="text"
+              icon={<CodeOutlined style={{ fontSize: 16 }} />}
+              onClick={() => setLogVisible(true)}
+              title="查看实时运行日志"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+            />
+            <Button
+              type="text"
               icon={themeMode === "dark" ? <SunOutlined style={{ fontSize: 16 }} /> : <MoonOutlined style={{ fontSize: 16 }} />}
               onClick={toggleTheme}
               title={themeMode === "dark" ? "切换为浅色模式" : "切换为暗色模式"}
@@ -219,6 +254,20 @@ export function AppShell() {
         <Content style={{ padding: 24, minHeight: "calc(100vh - 48px)", overflow: "auto" }}>
           <KeepAliveRouteOutlet include={[/\/platforms\/xhs\/discovery/, /\/platforms\/xhs\/crawler/]} />
         </Content>
+
+        <Drawer
+          title={<Space><CodeOutlined /> 实时运行日志</Space>}
+          placement="bottom"
+          height="50vh"
+          onClose={() => setLogVisible(false)}
+          open={logVisible}
+          styles={{ body: { padding: 0, background: "#000" }, header: { background: "#141414", borderBottom: "1px solid #303030" } }}
+        >
+          <div style={{ padding: 16, fontFamily: "Menlo, Monaco, Consolas, monospace", fontSize: 12, color: "#a6e22e", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
+            {globalLog || "等待日志载入..."}
+            <div ref={logEndRef} />
+          </div>
+        </Drawer>
       </Layout>
     </Layout>
   );

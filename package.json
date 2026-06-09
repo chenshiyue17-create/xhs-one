@@ -1,10 +1,4 @@
 {
-  "scripts": {
-    "dev:start": "bash scripts/start-dev.sh",
-    "dev:stop": "bash scripts/stop-dev.sh",
-    "dev:status": "bash scripts/dev-status.sh",
-    "smoke": "python3.10 -m compileall main.py backend apis xhs_utils spider tests && npm --prefix frontend run build"
-  },
   "dependencies": {
     "crypto-js": "^4.2.0",
     "jsdom": "^26.0.0"

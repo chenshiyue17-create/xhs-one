@@ -16,7 +16,9 @@ cd "$RAG_DIR"
 echo "✅ 知识库索引已更新"
 
 # 2. 编译前端代码 (确保 UI 修改生效)
-echo "2/4 正在编译前端代码 (npm run build)..."
+echo "2/4 正在更新版本标记并编译前端..."
+VERSION_TAG=$(date '+%Y%m%d_%H%M%S')
+echo "export const BUILD_VERSION = '$VERSION_TAG';" > "$PROJECT_ROOT/frontend/src/lib/version.ts"
 cd "$PROJECT_ROOT/frontend"
 npm run build
 echo "✅ 前端编译完成"

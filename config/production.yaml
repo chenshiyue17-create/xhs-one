@@ -8,9 +8,12 @@
 # be provided via environment variables rather than stored in this file.
 
 server:
-  host: "0.0.0.0"
+  # Backend should bind to loopback behind Nginx. Do not expose port 8000 publicly.
+  host: "127.0.0.1"
   port: 8000
-  cors_origins: "https://your-domain.com"
+  cors_origins: "https://www.tengda.wang,https://tengda.wang,http://www.tengda.wang,http://tengda.wang"
+  allowed_hosts: "www.tengda.wang,tengda.wang,127.0.0.1,localhost"
+  expose_api_docs: false
 
 database:
   type: "mysql"
@@ -24,6 +27,9 @@ security:
   # MUST be overridden via SECRET_KEY env var
   secret_key: "CHANGE_ME_VIA_ENV_VAR"
   fernet_key: ""
+  # Set only for first production boot if the admin user does not exist.
+  # Prefer passing BOOTSTRAP_ADMIN_PASSWORD through the server environment.
+  bootstrap_admin_password: ""
 
 scheduler:
   enabled: true

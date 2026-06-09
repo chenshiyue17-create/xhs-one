@@ -68,9 +68,9 @@ stop_pid_file "$FRONTEND_PID_FILE"
 stop_port 8000
 stop_port 5173
 
-nohup /usr/bin/setsid "$PYTHON_BIN" -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --lifespan on >"$BACKEND_LOG" 2>&1 < /dev/null &
+nohup /usr/bin/setsid "$PYTHON_BIN" -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --lifespan on >"$BACKEND_LOG" 2>&1 < /dev/null &
 echo $! > "$BACKEND_PID_FILE"
-nohup /usr/bin/setsid npm --prefix "$BASE_DIR/frontend" run dev -- --host 0.0.0.0 --port 5173 >"$FRONTEND_LOG" 2>&1 < /dev/null &
+nohup /usr/bin/setsid npm --prefix "$BASE_DIR/frontend" run dev -- --host 127.0.0.1 --port 5173 >"$FRONTEND_LOG" 2>&1 < /dev/null &
 echo $! > "$FRONTEND_PID_FILE"
 disown || true
 

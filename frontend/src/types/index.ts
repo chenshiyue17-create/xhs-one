@@ -92,6 +92,34 @@ export type XhsSearchNote = {
   raw: Record<string, unknown>;
 };
 
+export type XhsCopyExtractItem = {
+  url: string;
+  status: "success" | "failed" | string;
+  title: string;
+  copy: string;
+  video_copy: string;
+  note_id: string;
+  note_type: string;
+  author_name: string;
+  author_id: string;
+  cover_url: string;
+  likes: number;
+  collects: number;
+  comments: number;
+  shares: number;
+  tags: string[];
+  source: string;
+  message: string;
+  raw?: Record<string, unknown> | null;
+};
+
+export type XhsCopyExtractResponse = {
+  total: number;
+  success_count: number;
+  failed_count: number;
+  items: XhsCopyExtractItem[];
+};
+
 export type XhsNoteSearchResponse = {
   total: number;
   page: number;

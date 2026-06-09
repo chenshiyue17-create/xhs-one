@@ -9,9 +9,10 @@ if ENGINE_PATH not in sys.path:
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from backend.app.api import (
     accounts, ai, auth, auto_tasks, browser_login, drafts, files, 
@@ -28,6 +29,7 @@ from backend.app.services.scheduler_service import run_due_auto_tasks, shutdown_
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    settings = get_settings()
     # Create default user for "one-click" startup
     from sqlalchemy import select
     from backend.app.core.database import SessionLocal
@@ -36,7 +38,12 @@ async def lifespan(app: FastAPI):
     with SessionLocal() as db:
         user = db.scalar(select(User).where(User.username == "admin"))
         if not user:
-            user = User(username="admin", password_hash=hash_password("password123"))
+            admin_password = settings.bootstrap_admin_password
+            if not admin_password:
+                if settings.is_production:
+                    raise RuntimeError("生产环境禁止创建默认 admin/password123，请设置 BOOTSTRAP_ADMIN_PASSWORD。")
+                admin_password = "password123"
+            user = User(username="admin", password_hash=hash_password(admin_password))
             db.add(user)
             db.commit()
         
@@ -47,7 +54,6 @@ async def lifespan(app: FastAPI):
             from loguru import logger
             logger.info(f"Purged {purged} expired crawl cache entries")
     
-    settings = get_settings()
     scheduler = None
     if settings.scheduler_enabled:
         scheduler = start_due_publish_scheduler(settings.scheduler_interval_seconds)
@@ -60,7 +66,35 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title=settings.api_title, lifespan=lifespan)
+    docs_enabled = settings.expose_api_docs or not settings.is_production
+    hidden_docs_paths = {"/docs", "/redoc", "/openapi.json"}
+    app = FastAPI(
+        title=settings.api_title,
+        lifespan=lifespan,
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
+    )
+
+    if not docs_enabled:
+        @app.get("/docs", include_in_schema=False)
+        @app.get("/redoc", include_in_schema=False)
+        @app.get("/openapi.json", include_in_schema=False)
+        def _hidden_api_docs() -> None:
+            raise HTTPException(status_code=404, detail="Not found")
+
+    allowed_hosts = [host.strip() for host in settings.allowed_hosts.split(",") if host.strip()]
+    if allowed_hosts:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+
+    @app.middleware("http")
+    async def _security_headers(request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        return response
 
     origins = [origin.strip() for origin in settings.backend_cors_origins.split(",") if origin.strip()]
     app.add_middleware(
@@ -115,6 +149,7 @@ def create_app() -> FastAPI:
                 if (
                     response.status_code == 404
                     and not path.startswith("/api")
+                    and path not in hidden_docs_paths
                     and "." not in path.split("/")[-1]
                 ):
                     return FileResponse(str(frontend_dist / "index.html"))

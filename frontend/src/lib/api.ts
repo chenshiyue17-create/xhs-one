@@ -72,6 +72,7 @@ import type {
   XhsDataCrawlItem,
   XhsDataCrawlPayload,
   XhsDataCrawlResponse,
+  XhsCopyExtractResponse,
   XhsSearchOptions,
   XhsSearchNote,
   XhsQrLoginSession
@@ -444,6 +445,11 @@ export async function downloadXhsNote(payload: { url: string; cookie?: string; a
     ...payload,
     download: true
   });
+  return response.data;
+}
+
+export async function extractXhsCopy(payload: { urls: string[]; account_id?: number | null; include_raw?: boolean }): Promise<XhsCopyExtractResponse> {
+  const response = await http.post<XhsCopyExtractResponse>("/fast-downloader/copy/extract", payload);
   return response.data;
 }
 

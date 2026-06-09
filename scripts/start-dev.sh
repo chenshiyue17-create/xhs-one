@@ -2,34 +2,46 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SESSION_NAME="${SCREEN_SESSION_NAME:-xhs-all-in-one-dev}"
-LOG_FILE="$ROOT_DIR/logs/dev-server.log"
+SESSION_NAME="${XHS_SCREEN_SESSION:-xhs-all-in-one-dev}"
+HOST="${XHS_HOST:-127.0.0.1}"
+PORT="${XHS_PORT:-8000}"
+PYTHON_BIN="${PYTHON_BIN:-$ROOT_DIR/.venv/bin/python}"
+LOG_DIR="$ROOT_DIR/logs"
+LOG_FILE="$LOG_DIR/screen-dev.log"
 
-mkdir -p "$ROOT_DIR/logs" "$ROOT_DIR/output"
+mkdir -p "$LOG_DIR"
 
-screen_has_session() {
-  (screen -list 2>/dev/null || true) | grep -q "[.]${SESSION_NAME}[[:space:]]"
-}
-
-if screen_has_session; then
-  screen -S "$SESSION_NAME" -X quit
-  sleep 1
+if ! command -v screen >/dev/null 2>&1; then
+  echo "[error] screen is required to run the dev server in background."
+  exit 1
 fi
 
-for port in 8000 5173 8765; do
-  if command -v lsof >/dev/null 2>&1; then
-    pids="$(lsof -nP -tiTCP:"$port" -sTCP:LISTEN || true)"
-    if [ -n "$pids" ]; then
-      kill $pids || true
-      sleep 1
-    fi
+if [[ ! -x "$PYTHON_BIN" ]]; then
+  echo "[error] Python runtime not found: $PYTHON_BIN"
+  echo "        Run ./start.sh once to bootstrap dependencies."
+  exit 1
+fi
+
+if [[ "${SKIP_FRONTEND_BUILD:-0}" != "1" ]]; then
+  echo "[build] frontend"
+  (cd "$ROOT_DIR/frontend" && npm run build)
+fi
+
+"$ROOT_DIR/scripts/stop-dev.sh" >/dev/null 2>&1 || true
+
+echo "[start] $SESSION_NAME -> http://$HOST:$PORT"
+screen -dmS "$SESSION_NAME" zsh -lc \
+  "cd '$ROOT_DIR' && '$PYTHON_BIN' main.py --host '$HOST' --port '$PORT' >> '$LOG_FILE' 2>&1"
+
+for _ in {1..40}; do
+  if curl -fsS "http://$HOST:$PORT/api/health" >/dev/null 2>&1; then
+    echo "[ok] server is healthy: http://$HOST:$PORT"
+    echo "[ok] workbench: http://$HOST:$PORT/platforms/xhs/fast-download"
+    exit 0
   fi
+  sleep 1
 done
 
-cd "$ROOT_DIR"
-screen -dmS "$SESSION_NAME" bash -lc "./start.sh > '$LOG_FILE' 2>&1"
-
-echo "Dev server started in screen session: $SESSION_NAME"
-echo "Frontend URL: http://127.0.0.1:5173"
-echo "Backend URL: http://127.0.0.1:8000/docs"
-echo "Log file: $LOG_FILE"
+echo "[error] server did not become healthy in time. Recent log:"
+tail -n 80 "$LOG_FILE" || true
+exit 1
